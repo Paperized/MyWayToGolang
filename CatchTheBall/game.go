@@ -39,11 +39,11 @@ func MakeGame(events GameEvents) Game {
 	}
 }
 
-func (g *Game) SetupMatch(player1Name string, player2Name string, isBot bool) {
+func (g *Game) SetupMatch(player1Name string, player2Name string, isBot1 bool, isBot2 bool) {
 	g.player1.name = player1Name
 	g.player2.name = player2Name
-	g.player1.isBot = false
-	g.player2.isBot = isBot
+	g.player1.isBot = isBot1
+	g.player2.isBot = isBot2
 
 	g.player1.score = 0
 	g.player2.score = 0
@@ -72,9 +72,9 @@ func (g *Game) PlayMatch() bool {
 		scoreIndex := uint8(rand.Intn(5))
 		if choice == scoreIndex {
 			turnPlayerState.score++
-			events.onPlayerScore(g.turn, scoreIndex, g)
+			events.onPlayerScore(g.turn, scoreIndex+1, g)
 		} else {
-			events.onPlayerFail(g.turn, scoreIndex, g)
+			events.onPlayerFail(g.turn, scoreIndex+1, g)
 		}
 
 		if g.turn == Player1Code {
@@ -101,6 +101,8 @@ func _handlePlayerInput(playerState *PlayerState, g *Game) uint8 {
 		return g.events.onPlayerInput(g.turn, g)
 	}
 
+	// called only to trigger the even on the main, so we can update the visuals
+	g.events.onPlayerInput(g.turn, g)
 	return _botPlayerInput()
 }
 
