@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -22,13 +21,13 @@ const (
 	COMMA        = TokenType(',')
 	BACKINLINE   = TokenType('\n')
 	TRUE         = TokenType(0)
-	FALSE        = TokenType(0)
-	NULL         = TokenType(0)
-	NUMBER       = TokenType(0)
-	TEXT         = TokenType(0)
+	FALSE        = TokenType(1)
+	NULL         = TokenType(2)
+	NUMBER       = TokenType(3)
+	TEXT         = TokenType(4)
 )
 
-var allowedTokensAfterNumber []TokenType = []TokenType{CURLY_OPEN, CURLY_CLOSE, SQUARE_OPEN, SQUARE_CLOSE, SPACE, TAB, COLON, COMMA, BACKINLINE, DOUBLEQUOTE}
+var allowedTokensAfterNumber []TokenType = []TokenType{CURLY_OPEN, CURLY_CLOSE, SQUARE_OPEN, SQUARE_CLOSE, BACKINLINE, COLON, COMMA, DOUBLEQUOTE}
 
 type Token struct {
 	ttype   TokenType
@@ -61,9 +60,10 @@ func safeSubstring(str string, from int, to int) string {
 	return str[from:to]
 }
 
-// Tokenize JSON String to a list of Tokens, second parameter is optional (default true): if true new strings will be allocated,
-//
-//	if false substring ptr of the input string will be returned
+/*
+	 Tokenize JSON String to a list of Tokens, second parameter is optional (default true): if true new strings will be allocated,
+																							if false substring ptr of the input string will be returned
+*/
 func TokenizeJsonString(str string, alloc ...bool) ([]Token, error) {
 	useAlloc := true
 	if len(alloc) == 1 {
@@ -71,7 +71,6 @@ func TokenizeJsonString(str string, alloc ...bool) ([]Token, error) {
 	}
 
 	output := []Token{}
-
 	strLen := len(str)
 
 	for i := 0; i < strLen; i++ {
@@ -79,7 +78,9 @@ func TokenizeJsonString(str string, alloc ...bool) ([]Token, error) {
 		c := rune(str[i])
 
 		switch TokenType(c) {
-		case CURLY_OPEN, CURLY_CLOSE, SQUARE_OPEN, SQUARE_CLOSE, SPACE, TAB, COLON, COMMA, BACKINLINE:
+		case SPACE, TAB, BACKINLINE:
+			continue
+		case CURLY_OPEN, CURLY_CLOSE, SQUARE_OPEN, SQUARE_CLOSE, COLON, COMMA:
 			output = append(output, Token{ttype: TokenType(c), value: string(c), startAt: i, endAt: i + 1})
 		default:
 			// true word
@@ -116,7 +117,7 @@ func TokenizeJsonString(str string, alloc ...bool) ([]Token, error) {
 				}
 
 				if c == '0' && unicode.IsDigit(innerC) && innerC == '0' {
-					return output, errors.New(fmt.Sprintf("Unrecognized character: Numbers cannot start with two 0s at index %d: '%c'", i, str[i+1]))
+					return output, fmt.Errorf("unrecognized character: Numbers cannot start with two 0s at index %d: '%c'", i, str[i+1])
 				}
 
 				var numberFound bool = false
@@ -148,11 +149,11 @@ func TokenizeJsonString(str string, alloc ...bool) ([]Token, error) {
 
 				if numberFound {
 					if foundNotAllowedAfterChar {
-						return output, errors.New(fmt.Sprintf("Unrecognized character after a number at index %d: '%c'", i, str[j]))
+						return output, fmt.Errorf("unrecognized character after a number at index %d: '%c'", i, str[j])
 					}
 
-					output = append(output, Token{ttype: NUMBER, value: allocStringIfRequired(str[i:j+1], useAlloc), startAt: i, endAt: j + 1})
-					i = j + 1
+					output = append(output, Token{ttype: NUMBER, value: allocStringIfRequired(str[i:j], useAlloc), startAt: i, endAt: j})
+					i = j - 1
 					break
 				}
 
@@ -172,24 +173,22 @@ func TokenizeJsonString(str string, alloc ...bool) ([]Token, error) {
 				}
 
 				if foundNotAllowedAfterChar {
-					return output, errors.New(fmt.Sprintf("Unrecognized character after a number at index %d: '%c'", i, str[j]))
+					return output, fmt.Errorf("unrecognized character after a number at index %d: '%c'", i, str[j])
 				}
 
 				output = append(output, Token{ttype: NUMBER, value: allocStringIfRequired(str[i:j], useAlloc), startAt: i, endAt: j})
-				i = j
+				i = j - 1
 				break
 			}
 
 			// In case of TEXT which is inbetween DOUBLEQUOTES
 			if c == '"' {
-				output = append(output, Token{ttype: DOUBLEQUOTE, value: string(c), startAt: i, endAt: i + 1})
-
 				var nextChar rune
 				var j int
 				for j = i + 1; j < strLen; j++ {
 					nextChar, isEOF = getCharacter(str, j)
 					if isEOF {
-						return output, errors.New(fmt.Sprintf("String was not closed before EOF at %d", i))
+						return output, fmt.Errorf("string was not closed before EOF at %d", i)
 					}
 
 					if nextChar == '"' {
@@ -201,13 +200,12 @@ func TokenizeJsonString(str string, alloc ...bool) ([]Token, error) {
 					}
 				}
 
-				output = append(output, Token{ttype: TEXT, value: allocStringIfRequired(str[i+1:j], useAlloc), startAt: i, endAt: j})
-				output = append(output, Token{ttype: DOUBLEQUOTE, value: string(str[j]), startAt: j, endAt: j + 1})
+				output = append(output, Token{ttype: TEXT, value: allocStringIfRequired(str[i+1:j], useAlloc), startAt: i + 1, endAt: j})
 				i = j
 				break
 			}
 
-			return output, errors.New(fmt.Sprintf("Unrecognized character at index %d: '%c'", i, str[i]))
+			return output, fmt.Errorf("unrecognized character at index %d: '%c'", i, str[i])
 		}
 
 		if isEOF {
@@ -222,25 +220,6 @@ func Format(tokens []Token) string {
 	builder := strings.Builder{}
 
 	for i, token := range tokens {
-		builder.WriteByte('\'')
-		builder.WriteString(token.value)
-		builder.WriteByte('\'')
-		if i != len(tokens)-1 {
-			builder.WriteString(", ")
-		}
-	}
-
-	return builder.String()
-}
-
-func FormatTrim(tokens []Token) string {
-	builder := strings.Builder{}
-
-	for i, token := range tokens {
-		if token.ttype == SPACE || token.ttype == TAB || token.ttype == BACKINLINE {
-			continue
-		}
-
 		builder.WriteByte('\'')
 		builder.WriteString(token.value)
 		builder.WriteByte('\'')

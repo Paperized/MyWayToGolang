@@ -11,7 +11,18 @@ func main() {
 		"false": false,
 		"null": null,
 		"int": 1004,
-		"float": 10.90
+		"float": 10.90,
+		"obj": {
+			"he": "ha"
+		},
+		"list": [
+			10,
+			20,
+			30.5,
+			{
+				"isBool": true
+			}
+		]
 	}`
 
 	tokens, err := TokenizeJsonString(jsonInput)
@@ -19,5 +30,14 @@ func main() {
 		fmt.Println(err)
 	}
 
-	fmt.Println("Result: ", FormatTrim(tokens))
+	fmt.Println("Result: ", Format(tokens))
+
+	obj, err := JsonStringToMap(jsonInput)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	objAsMap := obj.(map[string]any)
+	fmt.Println("Result: ", obj)
+	fmt.Println((objAsMap["list"].([]any)[3]))
 }
