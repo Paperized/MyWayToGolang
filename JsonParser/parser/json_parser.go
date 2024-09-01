@@ -1,4 +1,4 @@
-package main
+package parser
 
 import (
 	"fmt"
@@ -17,8 +17,28 @@ PARSER RESULT: <output_value>
 <property> ::= TEXT ":" <all_values> OK
 */
 
-var allValuesTypes = []TokenType{TRUE, FALSE, NULL, NUMBER, TEXT /*, <output_value> */}
-var expectedPropertySequence = []TokenType{DOUBLEQUOTE, TEXT, DOUBLEQUOTE, COLON /*, <all_values> */}
+func JsonStringToMap(input string, alloc ...bool) (any, error) {
+	tokens, err := TokenizeJsonString(input, alloc...)
+	if err != nil {
+		return nil, err
+	}
+	if len(tokens) == 0 {
+		return nil, fmt.Errorf("parsing error json not provided")
+	}
+
+	var result any
+
+	switch tokens[0].ttype {
+	case CURLY_OPEN:
+		result, _, err = parseJsonObject(0, tokens)
+	case SQUARE_OPEN:
+		result, _, err = parseJsonArray(0, tokens)
+	default:
+		return nil, fmt.Errorf("parsing error: starting character not valid")
+	}
+
+	return result, err
+}
 
 func nextToken(at int, tokens []Token) *Token {
 	if at >= len(tokens) {
@@ -195,27 +215,4 @@ func parseJsonArray(fromIndex int, tokens []Token) ([]any, int, error) {
 	}
 
 	return result, fromIndex, fmt.Errorf("unreachable code at index: %d", tokens[fromIndex].startAt)
-}
-
-func JsonStringToMap(input string, alloc ...bool) (any, error) {
-	tokens, err := TokenizeJsonString(input, alloc...)
-	if err != nil {
-		return nil, err
-	}
-	if len(tokens) == 0 {
-		return nil, fmt.Errorf("parsing error json not provided")
-	}
-
-	var result any
-
-	switch tokens[0].ttype {
-	case CURLY_OPEN:
-		result, _, err = parseJsonObject(0, tokens)
-	case SQUARE_OPEN:
-		result, _, err = parseJsonArray(0, tokens)
-	default:
-		return nil, fmt.Errorf("parsing error: starting character not valid")
-	}
-
-	return result, err
 }
