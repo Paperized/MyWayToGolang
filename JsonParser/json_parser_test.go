@@ -10,6 +10,10 @@ func BenchmarkCustomJson(*testing.B) {
 	parser.JsonStringToMap(jsonInput, false)
 }
 
+func BenchmarkCustomJsonAlloc(*testing.B) {
+	parser.JsonStringToMap(jsonInput, true)
+}
+
 func BenchmarkGoJson(b *testing.B) {
 	var jsonInputBytes = []byte(jsonInput)
 	var r map[string]any

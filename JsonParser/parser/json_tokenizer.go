@@ -20,7 +20,7 @@ const (
 	COLON        = TokenType(':')
 	COMMA        = TokenType(',')
 	BACKINLINE   = TokenType('\n')
-	TRUE         = TokenType(0)
+	TRUE         = TokenType(0) // this is a multicharacter word, setting a placeholder
 	FALSE        = TokenType(1)
 	NULL         = TokenType(2)
 	NUMBER       = TokenType(3)
@@ -75,9 +75,9 @@ func TokenizeJsonString(str string, alloc ...bool) ([]Token, error) {
 
 	for i := 0; i < strLen; i++ {
 		isEOF := false
-		c := rune(str[i])
+		c := rune(str[i]) // convert byte to rune
 
-		switch TokenType(c) {
+		switch TokenType(c) { // convert rune to ttype
 		case SPACE, TAB, BACKINLINE:
 			continue
 		case CURLY_OPEN, CURLY_CLOSE, SQUARE_OPEN, SQUARE_CLOSE, COLON, COMMA:
