@@ -9,7 +9,8 @@ type ListenerWrapper[T comparable] struct {
 
 type signalReceiver interface {
 	DependencyChanged()
-	TriggerEvent()
+	TriggerListeners()
+	TriggerAsyncListeners()
 }
 
 type signalSender interface {

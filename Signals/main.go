@@ -3,48 +3,41 @@ package main
 import (
 	"fmt"
 	"signals/signals"
-	"strings"
+	"time"
 )
 
 func main() {
-	words := []string{"hellos", "friendos", "ornitorinco"}
-	/* 	Declare a signal, a signal has a value that can be set or retrieved, listeners can be attached to it
-	It's a "primary" type of Signal meaning that it cannot depend on any other signal
-	*/
-	wordIndexSig := signals.MakeSignal(0)
-
-	id2, _ := wordIndexSig.Listen(func(s int, bs *signals.BaseSignal[int]) {
-		fmt.Printf("New fruit selected : %v!\n", s)
+	curr := time.Now()
+	totalSleptSecondsSg := signals.MakeSignal(0)
+	totalSleptSecondsSg.Listen(func(i int, bs *signals.BaseSignal[int]) {
+		fmt.Printf("Total slept seconds: %d\n", i)
 	})
 
-	/*  Declare a computed signal, it has a value but cannot be changed manually since it's computed based on a provided function.
-	 	It's a "secondary" type of Signal, the listeners are triggered based on some signals dependencies.
-		When the values of the top change the value gets re-computed.
-	*/
-	wordCmpSig := signals.MakeComputedSignal(func() string {
-		index := wordIndexSig.Get()
-		return words[index]
-	}, wordIndexSig)
+	sleep := signals.MakeSignal(0)
+	sleep.ListenAsync(func(i int, bs *signals.BaseSignal[int]) {
+		time.Sleep(time.Second * time.Duration(i))
+		totalSleptSecondsSg.SetFromValue(func(x int) int { return x + i })
 
-	id, _ := wordCmpSig.Listen(func(s string, bs *signals.BaseSignal[string]) {
-		fmt.Printf("New fruit selected : %v!\n", s)
+		// try this, you will see an unexpected error due to the async operations
+		// totalSleptSecondsSg.Set(totalSleptSecondsSg.Get() + i)
 	})
 
-	// Not really a signal, its a computed value, in simple words a lazy loaded value based on a dirty flag. Optimized.
-	// We listen to fruitsNameCmpSig to split the calculated string from fruitsNameCmpSig and split by "o"
-	splitWordCmpValue := signals.MakeComputedValue(func() []string {
-		return strings.Split(wordCmpSig.Get(), "o")
-	}, wordCmpSig)
+	sleep.ListenAsync(func(i int, bs *signals.BaseSignal[int]) {
+		time.Sleep(time.Second * time.Duration(i))
+		totalSleptSecondsSg.SetFromValue(func(x int) int { return x + i })
 
-	// ComputedValue skips the index = 0 notification, the flag is set to dirty but nothing is computed until .Get() is called
-	wordIndexSig.Set(0, true)
+		// try this, you will see an unexpected error due to the async operations
+		// totalSleptSecondsSg.Set(totalSleptSecondsSg.Get() + i)
+	})
 
-	wordIndexSig.Set(1)
-	fmt.Println("Index: 1, ", splitWordCmpValue.Get())
+	sleep.ListenAsync(func(i int, bs *signals.BaseSignal[int]) {
+		time.Sleep(time.Second * time.Duration(i))
+		totalSleptSecondsSg.SetFromValue(func(x int) int { return x + i })
 
-	wordIndexSig.Set(2)
-	fmt.Println("Index: 2, ", splitWordCmpValue.Get())
+		// try this, you will see an unexpected error due to the async operations
+		// totalSleptSecondsSg.Set(totalSleptSecondsSg.Get() + i)
+	})
 
-	wordCmpSig.UnlistenById(id)
-	wordIndexSig.UnlistenById(id2)
+	sleep.Set(3)
+	fmt.Printf("Time elapsed: %v", time.Since(curr))
 }

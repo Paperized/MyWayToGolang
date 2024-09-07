@@ -3,11 +3,15 @@ package signals
 import (
 	"errors"
 	"fmt"
+	"sync"
 )
 
 type ComputedSignal[T comparable] struct {
-	value T
-	mapFn func() T
+	value             T
+	lastRecalcChanged bool
+	mapFn             func() T
+
+	rwValue sync.RWMutex
 
 	listeners         map[string]ListenerWrapper[T]
 	belowDependencies []signalReceiver
@@ -20,6 +24,8 @@ func MakeComputedSignal[T comparable](mapFn func() T, dependsOn ...signalSender)
 
 	cmpSignal := &ComputedSignal[T]{
 		mapFn:             mapFn,
+		lastRecalcChanged: true,
+		rwValue:           sync.RWMutex{},
 		listeners:         map[string]ListenerWrapper[T]{},
 		belowDependencies: []signalReceiver{},
 	}
@@ -36,35 +42,68 @@ func (cs *ComputedSignal[T]) AddBelowDependency(sr signalReceiver) {
 }
 
 func (cs *ComputedSignal[T]) DependencyChanged() {
-	cs.value = cs.mapFn()
+	newValue := cs.mapFn()
+
+	if cs.Get() == newValue {
+		return
+	}
+
+	cs.rwValue.Lock()
+	cs.lastRecalcChanged = true
+	cs.value = newValue
+	cs.rwValue.Unlock()
 
 	for _, dep := range cs.belowDependencies {
 		dep.DependencyChanged()
 	}
 }
 
-func (cs *ComputedSignal[T]) TriggerEvent() {
+func (cs *ComputedSignal[T]) TriggerListeners() {
+	value := cs.Get()
 	var bs BaseSignal[T] = cs
-
-	// wrap in goroutine
-	for _, lsWrapper := range cs.listeners {
-		if lsWrapper.isAsync {
-			lsWrapper.listener(cs.value, &bs)
-		}
-	}
 
 	for _, lsWrapper := range cs.listeners {
 		if !lsWrapper.isAsync {
-			lsWrapper.listener(cs.value, &bs)
+			lsWrapper.listener(value, &bs)
 		}
 	}
 
 	for _, dep := range cs.belowDependencies {
-		dep.TriggerEvent()
+		dep.TriggerListeners()
+	}
+}
+
+func (cs *ComputedSignal[T]) TriggerAsyncListeners() {
+	value := cs.Get()
+	var bs BaseSignal[T] = cs
+
+	// we are already in a go routine started from the main signal
+	for _, lsWrapper := range cs.listeners {
+		if lsWrapper.isAsync {
+			lsWrapper.listener(value, &bs)
+		}
+	}
+
+	// idk if its worth having those in different go routines, too many threads might get spawned and less control
+	for _, dep := range cs.belowDependencies {
+		dep.TriggerAsyncListeners()
 	}
 }
 
 func (cs *ComputedSignal[T]) Get() T {
+	cs.rwValue.RLock()
+
+	if cs.lastRecalcChanged {
+		cs.rwValue.RUnlock()
+
+		cs.rwValue.Lock()
+		defer cs.rwValue.Unlock()
+		cs.value = cs.mapFn()
+		cs.lastRecalcChanged = false
+		return cs.value
+	}
+
+	defer cs.rwValue.RUnlock()
 	return cs.value
 }
 

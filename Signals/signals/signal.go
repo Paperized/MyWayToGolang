@@ -3,10 +3,13 @@ package signals
 import (
 	"errors"
 	"fmt"
+	"sync"
 )
 
 type Signal[T comparable] struct {
-	value T
+	value         T
+	setValueMutex sync.Mutex
+	rwValue       sync.RWMutex
 
 	listeners         map[string]ListenerWrapper[T]
 	belowDependencies []signalReceiver
@@ -22,6 +25,8 @@ func MakeSignal[T comparable](optionalValue ...T) *Signal[T] {
 		listeners:         map[string]ListenerWrapper[T]{},
 		belowDependencies: []signalReceiver{},
 		value:             newValue,
+		setValueMutex:     sync.Mutex{},
+		rwValue:           sync.RWMutex{},
 	}
 }
 
@@ -29,13 +34,29 @@ func (cs *Signal[T]) AddBelowDependency(sr signalReceiver) {
 	cs.belowDependencies = append(cs.belowDependencies, sr)
 }
 
+func (cs *Signal[T]) SetFromValue(fn func(T) T) T {
+	cs.setValueMutex.Lock()
+	defer cs.setValueMutex.Unlock()
+
+	return cs.internalSet(fn(cs.value))
+}
+
 func (cs *Signal[T]) Set(value T, forceUpdate ...bool) T {
-	if cs.value == value && (len(forceUpdate) == 0 || !forceUpdate[0]) {
-		return cs.value
+	cs.setValueMutex.Lock()
+	defer cs.setValueMutex.Unlock()
+
+	return cs.internalSet(value, forceUpdate...)
+}
+
+func (cs *Signal[T]) internalSet(value T, forceUpdate ...bool) T {
+	if cs.Get() == value && (len(forceUpdate) == 0 || !forceUpdate[0]) {
+		return value
 	}
 
+	cs.rwValue.Lock()
 	prevValue := cs.value
 	cs.value = value
+	cs.rwValue.Unlock()
 
 	// update below dependencies
 	for _, dep := range cs.belowDependencies {
@@ -43,13 +64,18 @@ func (cs *Signal[T]) Set(value T, forceUpdate ...bool) T {
 	}
 
 	// Call listeners for this signal value
-
 	var bs BaseSignal[T] = cs
 
 	// wrap in goroutine
+	wg := sync.WaitGroup{}
+
 	for _, lsWrapper := range cs.listeners {
 		if lsWrapper.isAsync {
-			lsWrapper.listener(cs.value, &bs)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				lsWrapper.listener(cs.value, &bs)
+			}()
 		}
 	}
 
@@ -59,16 +85,28 @@ func (cs *Signal[T]) Set(value T, forceUpdate ...bool) T {
 		}
 	}
 
-	// Then we trigger the below dependencies listeners
+	wg.Wait()
 
+	// Then we trigger the below dependencies listeners
 	for _, dep := range cs.belowDependencies {
-		dep.TriggerEvent()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			dep.TriggerAsyncListeners()
+		}()
 	}
 
+	for _, dep := range cs.belowDependencies {
+		dep.TriggerListeners()
+	}
+
+	wg.Wait()
 	return prevValue
 }
 
 func (cs *Signal[T]) Get() T {
+	cs.rwValue.RLock()
+	defer cs.rwValue.RUnlock()
 	return cs.value
 }
 
