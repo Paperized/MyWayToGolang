@@ -39,5 +39,6 @@ func main() {
 	})
 
 	sleep.Set(3)
-	fmt.Printf("Time elapsed: %v", time.Since(curr))
+	// result for ListenAsync impl -> 3 seconds elapsed because each wait 3 seconds but in parallel
+	fmt.Printf("Total slept seconds: %v, Time elapsed (including all operations): %v", totalSleptSecondsSg.Get(), time.Since(curr))
 }
